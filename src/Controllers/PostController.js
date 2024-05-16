@@ -9,7 +9,7 @@ async function addPost(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   try {
-    const post = new Post(req.token.id, req.body.text, true);
+    const post = new Post(req.token.id, req.body.text, new Date(), true);
     const addPost = await client.db("BF6").collection("Post").insertOne(post);
     console.log(addPost);
     res.status(200).json(addPost);
@@ -18,4 +18,5 @@ async function addPost(req, res) {
     return res.status(500).json({ error: "Erreur Serveur" });
   }
 }
+
 module.exports = { addPost };
