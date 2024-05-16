@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { pool } = require("../Services/Connexion");
+const { pool } = require("../Services/ConnexionMysql");
 require("dotenv").config();
 
 async function verifyToken(req, res, next) {
@@ -18,14 +18,17 @@ async function verifyToken(req, res, next) {
   try {
     jwt.verify(token, process.env.MY_SECRET_KEY, async (error, authdData) => {
       if (error) {
+        console.log("ici");
         console.log(error);
         return res.status(401).json({ error: "Unauthorized" });
       }
       const verifData =
-        "SELECT user_id,user_email, name_role as role FROM user u JOIN role r ON r.id_role = u.id_role  WHERE user_id =? AND user_email = ?";
+        "SELECT iduser,user_email, role_name as role FROM user u JOIN role r ON r.idrole = u.id_role  WHERE iduser =? AND user_email = ?";
       const values = [authdData.id, authdData.email];
       const [rows] = await pool.execute(verifData, values);
       if (!rows[0]) {
+        console.log(authdData);
+        console.log("la");
         return res.status(401).json({ error: "Unauthorized!" });
       }
       req.token = authdData;

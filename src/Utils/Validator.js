@@ -1,5 +1,7 @@
 const validator = require("validator");
 
+const patternUserName = /^[a-zA-Z0-9]{3,20}$/;
+
 async function middleEmail(req, res, next) {
   const email = req.body.email;
   if (!email) {
@@ -35,4 +37,16 @@ async function middleName(req, res, next) {
   req.lastName = lastName;
   next();
 }
-module.exports = { middleEmail, middlePassword, middleName };
+async function middleUsername(req, res, next) {
+  const userName = req.body.userName;
+  if (!userName) {
+    return res.status(400).json({ error: "Need all fields" });
+  }
+  if (!patternUserName.test(userName)) {
+    return res.status(400).json({ error: "please send an username" });
+  }
+  req.userName = userName;
+
+  next();
+}
+module.exports = { middleEmail, middlePassword, middleName, middleUsername };
