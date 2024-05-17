@@ -23,7 +23,7 @@ async function verifyToken(req, res, next) {
         return res.status(401).json({ error: "Unauthorized" });
       }
       const verifData =
-        "SELECT iduser,user_email, role_name as role FROM user u JOIN role r ON r.idrole = u.id_role  WHERE iduser =? AND user_email = ?";
+        "SELECT iduser,user_email, role_name as role FROM user u JOIN role r ON r.idrole = u.id_role  WHERE iduser =? AND user_email = ? AND isActive = 1";
       const values = [authdData.id, authdData.email];
       const [rows] = await pool.execute(verifData, values);
       if (!rows[0]) {

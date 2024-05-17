@@ -14,6 +14,8 @@ const {
   updatePassword,
   getAllUser,
   getUserByUserName,
+  follow,
+  unfollow,
 } = require("../UserController");
 const { verifyToken } = require("../../Utils/verifyToken");
 
@@ -30,6 +32,8 @@ user.post(
 );
 user.post("/login", middlePassword, login);
 user.post("/resetPassword", middleEmail, resetPassword);
+user.post("/follow", verifyToken, follow);
+user.delete("/unfollow", verifyToken, unfollow);
 user.patch("/updatePassword", verifyToken, updatePassword);
 user.get("/getUserByUserName", verifyToken, middleUsername, getUserByUserName);
 user.get("/getAllUser/:id", verifyToken, getAllUser);

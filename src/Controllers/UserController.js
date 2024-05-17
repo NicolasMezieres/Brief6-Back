@@ -326,59 +326,23 @@ async function getUserByUserName(req, res) {
       user = Object.assign(user, { isFollow: true });
     });
     for (let i = 0; i < userByUserName.length; i++) {
-      console.log(req.token.id, userByUserName[i].id);
       if (req.token.id === userByUserName[i].id) {
         userByUserName[i].isFollow = "Impossible";
       } else {
         const valuesFollow = [req.token.id, userByUserName[i].id];
         const [isFollowed] = await pool.execute(sqlFollow, valuesFollow);
         if (!isFollowed[0]) {
-          console.log("on rentre la dedans ?");
           userByUserName[i].isFollow = false;
         }
       }
     }
-
-    // const result = await userByUserName.forEach( (user) => {
-
-    // });
-    // if (req.token.id !== user.id) {
-    //   const [isFollow] = await pool.execute(sqlFollow, valuesFollow);
-    //   if (isFollow[0] === undefined) {
-    //     console.log("dedans");
-    //     user.isFollow = "false";
-    //     console.log(user);
-    //   }
-    // } else {
-    //   user.isFollow = "impossible";
-    // }
-    console.log(userByUserName, "avant");
     res.status(200).json({ user: userByUserName, totalPages: pages });
   } catch (e) {
     console.log(e);
     return res.status(500).json({ error: "Erreur Serveur" });
   }
 }
-async function promiseAll(users) {
-  await Promise.all(
-    users.map(async (user) => {
-      const [verif] = await pool.query("SELECT * FROM user");
-      console.log(verif);
-    })
-  );
-}
-// await Promise.all(
-//   userByUserName.map(async (user) => {
-//     const valuesFollow = [req.token.id, user.id];
-//     const [isFollowed] = await pool.execute(sqlFollow, valuesFollow);
-//     console.log(isFollowed);
-//   })
-// );
-// async function isFollow(user, user_id, follow_id, sql) {
-// const valuesFollow = [user_id, follow_id];
-// const [isFollow] = await pool.query(sql, valuesFollow);
-//   console.log(isFollow);
-// }
+
 async function follow(req, res) {
   if (!req.body.follow) {
     return res.status(400).json({ error: "Need all fields" });
@@ -391,12 +355,53 @@ async function follow(req, res) {
   }
   try {
     const sqlVerifFollow =
-      "SELECT * FROM followed WHERE iduser = ? AND id_follow = ?";
+      "SELECT * FROM follow WHERE id_user = ? AND id_follow = ?";
     const valuesVerifFollow = [req.token.id, req.body.follow];
     const [verifFollow] = await pool.execute(sqlVerifFollow, valuesVerifFollow);
     if (verifFollow[0]) {
       return res.status(400).json({ error: "Already follow" });
     }
+    const [follow] = await pool.execute(
+      "INSERT INTO follow VALUES(?,?)",
+      valuesVerifFollow
+    );
+    if (follow.affectedRows > 0) {
+      return res.status(200).json({ msg: "Follow succesfully" });
+    }
+    return res.status(500).json({ error: "Erreur Serveur" });
+  } catch (e) {
+    console.log(e);
+    return res.status(500).json({ error: "Erreur Serveur" });
+  }
+}
+async function unfollow(req, res) {
+  if (!req.body.unfollow) {
+    return res.status(400).json({ error: "Need all fields" });
+  }
+  if (typeof req.body.unfollow !== "number") {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (req.body.unfollow === req.token.id) {
+    return res
+      .status(400)
+      .json({ error: "impossible to unfollow your account" });
+  }
+  try {
+    const sqlVerifFollow =
+      "SELECT * FROM follow WHERE id_user = ? AND id_follow = ?";
+    const valuesVerifFollow = [req.token.id, req.body.unfollow];
+    const [verifFollow] = await pool.execute(sqlVerifFollow, valuesVerifFollow);
+    if (!verifFollow[0]) {
+      return res.status(400).json({ error: "Not follow" });
+    }
+    const [follow] = await pool.execute(
+      "DELETE FROM follow WHERE follow.id_user = ? AND follow.id_follow = ? ;",
+      valuesVerifFollow
+    );
+    if (follow.affectedRows > 0) {
+      return res.status(200).json({ msg: "Unfollow succesfully" });
+    }
+    return res.status(500).json({ error: "Erreur Serveur" });
   } catch (e) {
     console.log(e);
     return res.status(500).json({ error: "Erreur Serveur" });
@@ -410,4 +415,6 @@ module.exports = {
   updatePassword,
   getAllUser,
   getUserByUserName,
+  follow,
+  unfollow,
 };
