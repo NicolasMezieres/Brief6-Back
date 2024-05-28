@@ -23,16 +23,15 @@ async function verifyToken(req, res, next) {
         return res.status(401).json({ error: "Unauthorized" });
       }
       const verifData =
-        "SELECT iduser,user_email, role_name as role FROM user u JOIN role r ON r.idrole = u.id_role  WHERE iduser =? AND user_email = ? AND isActive = 1";
+        "SELECT id_user,user_email, role_name as role, user_picture as picture FROM user u JOIN role r ON r.id_role = u.id_role  WHERE id_user =? AND user_email = ? AND isActive = 1";
       const values = [authdData.id, authdData.email];
       const [rows] = await pool.execute(verifData, values);
       if (!rows[0]) {
-        console.log(authdData);
-        console.log("la");
-        return res.status(401).json({ error: "Unauthorized!" });
+        return res.status(401).json({ error: "Unauthorized! ici" });
       }
       req.token = authdData;
       req.role = rows[0].role;
+      req.picture = rows[0].picture
       next();
     });
   } catch (e) {

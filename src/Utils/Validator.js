@@ -38,7 +38,7 @@ async function middleName(req, res, next) {
   next();
 }
 async function middleUsername(req, res, next) {
-  const userName = req.body.userName;
+  const userName = req.body.userName ?? req.params.userName;
   if (!userName) {
     return res.status(400).json({ error: "Need all fields" });
   }
@@ -49,4 +49,14 @@ async function middleUsername(req, res, next) {
 
   next();
 }
-module.exports = { middleEmail, middlePassword, middleName, middleUsername };
+async function middleIdentifier(req, res, next) {
+  
+  const identifier = req.body.identifier;
+  console.log(identifier);
+  if (!patternUserName.test(identifier) && !validator.isEmail(identifier)) {
+    return res.status(400).json({ error: "Please send an identifier" });
+  }
+  req.identifier = identifier;
+  next();
+}
+module.exports = { middleEmail, middlePassword, middleName, middleUsername, middleIdentifier };

@@ -7,6 +7,7 @@ const patternUserName = /^[a-zA-Z0-9]{3,20}$/;
 
 async function register(req, res) {
   const picture = req.newFileName;
+  console.log(picture);
   if (!picture) {
     return res.status(400).json({ error: "Erreur avec l'image" });
   }
@@ -37,9 +38,16 @@ async function register(req, res) {
   ];
   try {
     const sqlVerifEmail =
-      "SELECT * FROM user WHERE user_email = ? OR user_userName = ?";
-    const valueEmail = [req.email, req.userName];
+      "SELECT * FROM user WHERE user_email = ?";
+      const sqlVerifUsername =
+      "SELECT * FROM user WHERE user_username = ?";
+    const valueEmail = [req.email];
+    const valueUserName = [ req.userName]
     const [verifEmail] = await pool.execute(sqlVerifEmail, valueEmail);
+    const [verifUserName] = await pool.execute(sqlVerifUsername, valueUserName);
+    if(verifUserName.length >=1){
+      return res.status(401).json({error:"Username already use"})
+    }
     if (verifEmail.length >= 1) {
       return res.status(401).json({ error: "invalid credentials" });
     }
@@ -98,7 +106,7 @@ async function login(req, res) {
     return res.status(400).json({ error: "Need all fields" });
   }
   const sqlVerifEmail =
-    "SELECT * FROM user u JOIN role r ON u.id_role = r.idrole WHERE user_email = ? OR user_userName = ? AND isActive = 1";
+    "SELECT * FROM user u JOIN role r ON u.id_role = r.id_role WHERE user_email = ? OR user_username = ? AND isActive = 1";
   const value = [req.body.identifier, req.body.identifier];
   try {
     const [verifEmail] = await pool.execute(sqlVerifEmail, value);
@@ -110,31 +118,33 @@ async function login(req, res) {
       verifEmail[0].user_password
     );
     if (!verifPassword) {
+      console.log("ici");
       return res.status(401).json({ error: "Invalid credentials" });
     }
     const token = jwt.sign(
       {
-        id: verifEmail[0].iduser,
-        userName: verifEmail[0].user_userName,
+        id: verifEmail[0].id_user,
+        userName: verifEmail[0].user_username,
         email: verifEmail[0].user_email,
         role: verifEmail[0].role_name,
       },
       process.env.MY_SECRET_KEY,
       { expiresIn: "4h" }
     );
-    res.status(201).json({ jwt: token });
+    const photo = `http://localhost:3000/imageFile/${verifEmail[0].user_picture}`
+    res.status(201).json({ jwt: token, role: verifEmail[0].role_name, image: photo });
   } catch (e) {
     console.log(e);
     return res.status(500).json({ error: "Erreur Serveur" });
   }
 }
 async function resetPassword(req, res) {
-  if (!req.email) {
+  if (!req.identifier) {
     return res.status(400).json({ error: "Need all fields" });
   }
   const sqlVerifEmail =
-    "SELECT * FROM user u JOIN role r ON u.id_role = r.idrole  WHERE user_email = ?";
-  const value = [req.email];
+    "SELECT * FROM user u JOIN role r ON u.id_role = r.id_role  WHERE user_email = ? OR user_username = ?";
+  const value = [req.identifier, req.identifier];
   try {
     const [verifEmail] = await pool.execute(sqlVerifEmail, value);
     if (!verifEmail[0]) {
@@ -142,7 +152,7 @@ async function resetPassword(req, res) {
     }
     const token = jwt.sign(
       {
-        id: verifEmail[0].iduser,
+        id: verifEmail[0].id_user,
         userName: verifEmail[0].user_userName,
         email: verifEmail[0].user_email,
         role: verifEmail[0].role_name,
@@ -152,11 +162,11 @@ async function resetPassword(req, res) {
     );
     const info = await transporter.sendMail({
       from: `${process.env.SMTP_EMAIL}`,
-      to: req.email,
+      to: verifEmail[0].user_email,
       subject: "Demande de changement de mot de passe Pictochat",
       text: "Changement de mot de passe",
       html: `<p>Nous avons reçu une demande de changement de mot de passe pour votre compte Pictochat.</p>
-            <p>Ce lien expirera dans 24heures. Si vous n'avez pas fait de demande de changement de mot de passe, merci d'ignorer cette email.</p>
+            <p>Ce lien expirera dans 10 minutes. Si vous n'avez pas fait de demande de changement de mot de passe, merci d'ignorer cette email.</p>
             <p>Pour changer votre mot de passe cliquer sur ce lien ci dessous: 
             <br><a href="http://localhost:5500/resetPassword/resetPassword.html?token=${token}">Activate your email</a>
             </p>`,
@@ -209,11 +219,11 @@ async function updatePassword(req, res) {
       values.push(newPassword);
     }
     if (req.body.isActive !== undefined) {
-      if (typeof req.body.isActive !== "boolean") {
+      if (typeof req.body.isActive !== "boolean" && parseInt(req.body.isActive) !== 0 && parseInt(req.body.isActive) !== 1) {
         return res.status(400).json({ error: "please send a boolean" });
       }
       data.push("isActive = ?");
-      values.push(req.body.isActive);
+      values.push(parseInt(req.body.isActive));
     }
     if (req.body.email) {
       if (!validator.isEmail(req.body.email)) {
@@ -229,17 +239,23 @@ async function updatePassword(req, res) {
       values.push(req.body.email);
     }
     if (req.token.role === "admin") {
+      if (req.body.reasonBan || req.body.reasonBan === "") {
+        data.push("user_reasonBan = ?");
+        values.push(req.body.reasonBan);
+      }
       const [verifAdmin] = await pool.query(
-        `SELECT * FROM user u JOIN role r ON u.id_role = r.idrole WHERE iduser = ${req.token.id}`
+        `SELECT * FROM user u JOIN role r ON u.id_role = r.id_role WHERE id_user = ${req.token.id}`
       );
       if (!verifAdmin[0] || verifAdmin[0].role_name !== "admin") {
         return res.status(401).json({ error: "Unauthorized" });
       }
-      if (!req.body.id) {
-        return res.status(400).json({ error: "Need Id user" });
+      if (req.body.id) {
+        values.push(req.body.id);
+        verif.push(req.body.id)
+      } else {
+        values.push(req.token.id);
+        verif.push(req.token.id);
       }
-      values.push(req.body.id);
-      verif.push(req.body.id);
     } else if (req.token.role === "user") {
       values.push(req.token.id);
       verif.push(req.token.id);
@@ -247,9 +263,10 @@ async function updatePassword(req, res) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     if (values.length > 1) {
-      console.log(req.body.isActive);
       data.join();
-      const sqlVerifEmail = "SELECT * FROM user WHERE iduser = ?";
+      console.log(values);
+      console.log(verif);
+      const sqlVerifEmail = "SELECT * FROM user WHERE id_user = ?";
       const [verifEmail] = await pool.execute(sqlVerifEmail, verif);
       if (
         verifEmail[0].user_email !== req.token.email &&
@@ -257,13 +274,12 @@ async function updatePassword(req, res) {
       ) {
         return res.status(401).json({ error: "Unauthorized!" });
       }
-      const sqlUpdate = `UPDATE user SET ${data} WHERE iduser = ? `;
-      values.push(verifEmail[0].iduser);
+      const sqlUpdate = `UPDATE user SET ${data} WHERE id_user = ? `;
       const [update] = await pool.execute(sqlUpdate, values);
       if (update.affectedRows >= 1) {
         return res.status(200).json({ msg: "Change successfuly" });
       }
-      return res.status(500).json({ error: "Erreur Serveur" });
+      return res.status(500).json({ error: "Erreur Serveur " });
     }
   } catch (e) {
     console.log(e);
@@ -272,6 +288,7 @@ async function updatePassword(req, res) {
 }
 
 async function getAllUser(req, res) {
+  req.params.id--;
   if (req.params.id - 1 < 0 || !req.params.id) {
     req.params.id = 0;
   }
@@ -280,7 +297,7 @@ async function getAllUser(req, res) {
   }
   const elementNumber = 10;
   const offset = req.params.id * elementNumber;
-  const sqlAllUser = `SELECT user_firstName as firstName, user_lastName as lastName,user_userName as userName, user_email as email, isActive FROM user LIMIT ${elementNumber} OFFSET ${offset}`;
+  const sqlAllUser = `SELECT id_user as id, user_firstName as firstName, user_lastName as lastName,user_userName as userName, user_email as email, isActive, user_reasonBan as reasonBan FROM user LIMIT ${elementNumber} OFFSET ${offset}`;
   try {
     const [totalUser] = await pool.query("SELECT count(*) as total FROM user");
     const pages = Math.ceil(totalUser[0].total / elementNumber);
@@ -288,26 +305,27 @@ async function getAllUser(req, res) {
     if (!allUser[0]) {
       return res.status(404).json({ error: "Not found !" });
     }
-    res.status(200).json({ user: allUser, totalPages: pages });
+    res.status(200).json({ user: allUser, totalPages: pages, page: req.params.id +1 });
   } catch (e) {
     console.log(e);
     return res.status(500).json({ error: "Erreur Serveur" });
   }
 }
 async function getUserByUserName(req, res) {
+  req.params.id--;
   if (req.params.id - 1 < 0 || !req.params.id) {
     req.params.id = 0;
   }
 
   const elementNumber = 10;
   const offset = req.params.id * elementNumber;
-  const sqlUserByUserName = `SELECT iduser as id, user_userName as username, user_picture as picture FROM user WHERE user_userName LIKE ? LIMIT ${elementNumber} OFFSET ${offset}`;
+  const sqlUserByUserName = `SELECT id_user as id, user_username as username, user_picture as picture FROM user WHERE user_username LIKE ? LIMIT ${elementNumber} OFFSET ${offset}`;
   const userName = "%" + req.userName + "%";
   const value = [userName];
 
   try {
     const [totalUser] = await pool.execute(
-      "SELECT count(*) as total FROM user WHERE user_userName LIKE ?",
+      "SELECT count(*) as total FROM user WHERE user_username LIKE ?",
       value
     );
     const pages = Math.ceil(totalUser[0].total / elementNumber);
@@ -315,34 +333,85 @@ async function getUserByUserName(req, res) {
     if (!userByUserName[0]) {
       return res.status(404).json({ error: "Not Found!" });
     }
-    const image = ["http://localhost:3000/imageFile"];
     const sqlFollow =
-      "SELECT * FROM follow WHERE id_user = ? AND id_follow = ?";
-
+      "SELECT * FROM follow WHERE follow_id_user = ? AND follow_id_follow = ?";
+    const image = ["http://localhost:3000/imageFile/"];
     await userByUserName.forEach(async (user) => {
       const resultImage = user.picture;
       const concatImage = image.concat(resultImage);
       user.picture = concatImage.join("");
-      user = Object.assign(user, { isFollow: true });
+      user = Object.assign(user, { isFollow: true, numberFollow:0 });
     });
+
     for (let i = 0; i < userByUserName.length; i++) {
       if (req.token.id === userByUserName[i].id) {
         userByUserName[i].isFollow = "Impossible";
       } else {
+        //vérification de si l'utilisateur suis la personne
         const valuesFollow = [req.token.id, userByUserName[i].id];
         const [isFollowed] = await pool.execute(sqlFollow, valuesFollow);
         if (!isFollowed[0]) {
           userByUserName[i].isFollow = false;
         }
       }
+      const sqlNumberFollow = "SELECT * FROM follow WHERE follow_id_follow = ?";
+      const [numberFollow] = await pool.execute(sqlNumberFollow, [userByUserName[i].id]);
+      userByUserName[i].numberFollow = numberFollow.length;
     }
-    res.status(200).json({ user: userByUserName, totalPages: pages });
+    res.status(200).json({ user: userByUserName, totalPages: pages, page: req.params.id +1 });
   } catch (e) {
     console.log(e);
     return res.status(500).json({ error: "Erreur Serveur" });
   }
 }
+async function getUserByfollow(req, res) {
+  req.params.id--;
+  if (req.params.id - 1 < 0 || !req.params.id) {
+    req.params.id = 0;
+  }
+  const userId = req.token.id;
+  const value = [userId];
+  const elementNumber = 10;
+  const offset = req.params.id * elementNumber;
+  const sqlUserByFollow = `SELECT u.id_user as id_user, u.user_username as username, u.user_picture as picture,u.user_numberFollow as numberFollow FROM user u WHERE u.id_user IN (SELECT follow_id_follow FROM user u JOIN follow f WHERE f.follow_id_user = ?) LIMIT ${elementNumber} OFFSET ${offset}`;
+  try {
+    const [totalUser] = await pool.execute(
+      "SELECT count(*) as total FROM user u WHERE u.id_user IN(SELECT follow_id_follow FROM user u JOIN follow f WHERE f.follow_id_user = ?)",
+      value
+    );
+    const pages = Math.ceil(totalUser[0].total / elementNumber);
+    const [userByFollow] = await pool.execute(sqlUserByFollow, value);
+    if (!userByFollow[0]) {
+      return res.status(404).json({ error: "Not Found!" });
+    }
+    const sqlFollow =
+      "SELECT * FROM follow WHERE follow_id_user = ? AND follow_id_follow = ?";
+    const image = ["http://localhost:3000/imageFile/"];
+    await userByFollow.forEach(async (user) => {
+      const resultImage = user.picture;
+      const concatImage = image.concat(resultImage);
+      user.picture = concatImage.join("");
+      user = Object.assign(user, { isFollow: true, });
+    });
 
+    // for (let i = 0; i < userByUserName.length; i++) {
+    //   if (req.token.id === userByUserName[i].id) {
+    //     userByUserName[i].isFollow = "Impossible";
+    //   } else {
+    //     //vérification de si l'utilisateur suis la personne
+    //     const valuesFollow = [req.token.id, userByUserName[i].id];
+    //     const [isFollowed] = await pool.execute(sqlFollow, valuesFollow);
+    //     if (!isFollowed[0]) {
+    //       userByUserName[i].isFollow = false;
+    //     }
+    //   }
+    // }
+    res.status(200).json({ user: userByFollow, totalPages: pages });
+  } catch (e) {
+    console.log(e);
+    return res.status(500).json({ error: "Erreur Serveur" });
+  }
+}
 async function follow(req, res) {
   if (!req.body.follow) {
     return res.status(400).json({ error: "Need all fields" });
@@ -355,17 +424,18 @@ async function follow(req, res) {
   }
   try {
     const sqlVerifFollow =
-      "SELECT * FROM follow WHERE id_user = ? AND id_follow = ?";
+      "SELECT * FROM follow WHERE follow_id_user = ? AND follow_id_follow = ?";
     const valuesVerifFollow = [req.token.id, req.body.follow];
     const [verifFollow] = await pool.execute(sqlVerifFollow, valuesVerifFollow);
     if (verifFollow[0]) {
       return res.status(400).json({ error: "Already follow" });
     }
     const [follow] = await pool.execute(
-      "INSERT INTO follow VALUES(?,?)",
+      "INSERT INTO follow VALUES(NULL,?,?);",
       valuesVerifFollow
     );
     if (follow.affectedRows > 0) {
+      const [addFollow] = await pool.execute("UPDATE user SET user_numberFollow = user_numberFollow + 1 WHERE id_user = ?",[req.body.follow])
       return res.status(200).json({ msg: "Follow succesfully" });
     }
     return res.status(500).json({ error: "Erreur Serveur" });
@@ -388,17 +458,18 @@ async function unfollow(req, res) {
   }
   try {
     const sqlVerifFollow =
-      "SELECT * FROM follow WHERE id_user = ? AND id_follow = ?";
+      "SELECT * FROM follow WHERE follow_id_user = ? AND follow_id_follow = ?";
     const valuesVerifFollow = [req.token.id, req.body.unfollow];
     const [verifFollow] = await pool.execute(sqlVerifFollow, valuesVerifFollow);
     if (!verifFollow[0]) {
       return res.status(400).json({ error: "Not follow" });
     }
     const [follow] = await pool.execute(
-      "DELETE FROM follow WHERE follow.id_user = ? AND follow.id_follow = ? ;",
+      "DELETE FROM follow WHERE follow_id_user = ? AND follow_id_follow = ? ;",
       valuesVerifFollow
     );
     if (follow.affectedRows > 0) {
+      const [removeFollow] = await pool.execute("UPDATE user SET user_numberFollow = user_numberFollow - 1 WHERE id_user = ?",[req.body.unfollow])
       return res.status(200).json({ msg: "Unfollow succesfully" });
     }
     return res.status(500).json({ error: "Erreur Serveur" });
@@ -406,6 +477,22 @@ async function unfollow(req, res) {
     console.log(e);
     return res.status(500).json({ error: "Erreur Serveur" });
   }
+}
+async function isFreeUsername(req, res) {
+  const sqlVerifUsername = "SELECT * FROM user WHERE user_username = ?";
+  const values = [req.userName];
+  try {
+    const [verifUsername] = await pool.execute(sqlVerifUsername, values);
+  if (!verifUsername[0]) {
+    return res.status(200).json({error:"Not found!"})
+    }
+    return res.status(409).json({ msg: "Username is free" });
+  } catch (e) {
+    console.log(e);
+    return res.status(500).json({error:"Erreur Serveur"})
+  }
+  
+
 }
 module.exports = {
   register,
@@ -417,4 +504,6 @@ module.exports = {
   getUserByUserName,
   follow,
   unfollow,
+  isFreeUsername,
+  getUserByfollow,
 };

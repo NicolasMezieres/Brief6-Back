@@ -1,5 +1,5 @@
 class Comment {
-  constructor(id_user, id_post, text, image, createdAt, isVisible) {
+  constructor(id_user, id_post, text, image, id_comment, createdAt, isVisible) {
     this.id_user = id_user;
     this.id_post = id_post;
     this.text = text;
